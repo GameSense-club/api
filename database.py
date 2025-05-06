@@ -59,6 +59,17 @@ def create_users():
         role TEXT DEFAULT 'user'
     )''')
 
+def create_verification_codes():
+    SQL_request('''CREATE TABLE IF NOT EXISTS verification_codes (
+        id INTEGER PRIMARY KEY,
+        email VARCHAR(255) NOT NULL,
+        code VARCHAR(10) NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        type VARCHAR(20) NOT NULL
+    )''')
+    SQL_request('CREATE INDEX IF NOT EXISTS idx_email_type ON verification_codes (email, type)')
+
 
 
 create_users()
+create_verification_codes()
