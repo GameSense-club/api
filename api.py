@@ -51,25 +51,6 @@ def require_api_key(func):
         return func(*args, **kwargs)
     return wrapper
 
-def jwt_required(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if not token:
-            return jsonify({"error": "Токен отсутствует"}), 401
-
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-            current_user_id = payload['user_id']
-        except jwt.ExpiredSignatureError:
-            return jsonify({"error": "Токен истёк"}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({"error": "Неверный токен"}), 401
-
-        return func(current_user_id, *args, **kwargs)
-    return wrapper
-
-
 # РОУТЫ
 @api.route('/', methods=['GET'])
 def example():
@@ -215,36 +196,10 @@ def verify_code():
     return jsonify({"message": "Email подтверждён"}), 200
 
 
-@api.route('/password/reset/request', methods=['POST'])
-@require_api_key
-def reset_password_request():
-    data = request.get_json()
-    email = data.get('email')
-
-    user = SQL_request("SELECT * FROM users WHERE email = ?", params=(email,), fetch='one')
-    if not user:
-        return jsonify({"error": "Пользователь не найден"}), 404
-
-    token = generate_token()
-    SQL_request("""
-        INSERT INTO verification_codes (email, token, type)
-        VALUES (?, ?, 'reset_password')
-    """, params=(email, token), fetch='none')
-
-    reset_link = f"https://yoursite.com/reset-password?token= {token}"
-    send_email(
-        to_email=email,
-        subject="Восстановление пароля",
-        text_body=f"Перейдите по ссылке: {reset_link}",
-        html_body=f"<p>Перейдите по ссылке: <a href='{reset_link}'>Сбросить пароль</a></p>"
-    )
-
-    return jsonify({"message": "Ссылка для восстановления отправлена на email"}), 200
-
 
 @api.route('/profile', methods=['GET'])
-@jwt_required
-def profile(user_id):
+@role_required('admin')
+def profile(user_id=1):
     user = SQL_request("SELECT * FROM users WHERE user_id = ?", params=(user_id,), fetch='one')
     if not user:
         return jsonify({"error": "Пользователь не найден"}), 404

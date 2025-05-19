@@ -11,6 +11,8 @@ from flask import request, jsonify, abort
 audit_logger = logging.getLogger('audit')
 audit_logger.setLevel(logging.INFO)
 
+SECRET_KEY = os.getenv("SECRET_KEY")
+
 # Проверяем, существует ли уже обработчик, чтобы не дублировать
 if not audit_logger.handlers:
     audit_handler = RotatingFileHandler('audit.log', maxBytes=5 * 1024 * 1024, backupCount=3, encoding='utf-8')
@@ -33,8 +35,8 @@ def role_required(required_role='user'):
                 abort(401, description="Токен отсутствует")
 
             try:
-                token = auth_header
-                payload = jwt.decode(token, os.getenv("SECRET_KEY"), algorithms=["HS256"])
+                token = auth_header.split(" ")[1]
+                payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
                 user_role = payload.get('role', 'user')
 
                 # Проверяем, достаточно ли прав
