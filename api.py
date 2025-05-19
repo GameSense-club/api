@@ -7,11 +7,13 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from functools import wraps
 from dotenv import load_dotenv
 import os
+from middleware import setup_middleware, role_required
 
 load_dotenv()
 
 if __name__ != '__main__':
     CORS(app)
+    setup_middleware(app)
 
 VERSION = "test"
 
@@ -30,7 +32,6 @@ api = Blueprint(
     static_folder='static',
     url_prefix='/api'
 )
-
 
 def check_api_key(api_key):
     if api_key not in ALLOWED_API_KEYS:
@@ -74,7 +75,6 @@ def example():
     return jsonify({"message": "API Работает"}), 200
 
 @api.route('/login', methods=['POST'])
-@require_api_key
 def login():
     data = request.get_json()
     identifier = data.get('identifier')  # Может быть email или телефон
@@ -124,7 +124,6 @@ def login():
 
 
 @api.route('/register', methods=['POST'])
-@require_api_key
 def register():
     data = request.get_json()
     
@@ -177,7 +176,6 @@ def register():
 
 @api.route('/profile', methods=['GET'])
 @jwt_required
-@require_api_key
 def profile(user_id):
     user = SQL_request("SELECT * FROM users WHERE user_id = ?", params=(user_id,), fetch='one')
     if not user:
@@ -195,8 +193,8 @@ if __name__ == '__main__':
     for var in required_env_vars:
         if not os.getenv(var):
             raise EnvironmentError(f"Переменная окружения {var} не задана в .env")
-        else:
-            logging.info("Сервер запущен")
-            app = Flask(__name__)
-            app.register_blueprint(api)
-            app.run(port=5000, debug=True)
+    
+    logging.info("Сервер запущен")
+    app = Flask(__name__)
+    app.register_blueprint(api)
+    app.run(port=5000, debug=True)
