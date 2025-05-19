@@ -4,6 +4,7 @@ from logging.handlers import RotatingFileHandler
 import random
 import string
 import secrets
+from mail import send_email
 
 formatter = logging.Formatter('%(levelname)s [%(asctime)s]   %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
@@ -19,3 +20,18 @@ def generate_code(length=6):
 
 def generate_token(length=32):
     return secrets.token_hex(length)
+
+def register_send_code(email):
+    code = generate_code()
+    SQL_request("""
+        INSERT INTO verification_codes (email, code, type)
+        VALUES (?, ?, 'register')
+    """, params=(email, code), fetch='none')
+
+    # Отправляем письмо
+    send_email(
+        to_email=email,
+        subject="Код подтверждения",
+        text_body=f"Ваш код: {code}",
+        html_body=f"<p>Ваш код: <strong>{code}</strong></p>"
+    )

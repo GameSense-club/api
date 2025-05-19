@@ -96,32 +96,37 @@ def login():
     if not check_password_hash(user['password_hash'], password):
         return jsonify({"error": "Неверный пароль"}), 401
 
-    # Обновляем last_login
-    SQL_request(
-        "UPDATE users SET last_login = datetime('now') WHERE user_id = ?",
-        params=(user['user_id'],),
-        fetch='none'
-    )
+    if user["email_confirmed"] == 0:
+        register_send_code(user["email"])
+        return jsonify({"message": "Аккаунт не подтверждён. Код отправлен на ваш email"}), 200
 
-    # Генерируем JWT
-    token = jwt.encode({
-        'user_id': user['user_id'],
-        'email': user['email'],
-        'role': user['role'],
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
-    }, SECRET_KEY, algorithm="HS256")
-
-    return jsonify({
-        "token": token,
-        "user": {
-            "user_id": user['user_id'],
-            "first_name": user['first_name'],
-            "last_name": user['last_name'],
-            "email": user['email'],
-            "role": user['role'],
-            "balance": user['balance']
-        }
-    }), 200
+    else:
+        # Обновляем last_login
+        SQL_request(
+            "UPDATE users SET last_login = datetime('now') WHERE user_id = ?",
+            params=(user['user_id'],),
+            fetch='none'
+        )
+    
+        # Генерируем JWT
+        token = jwt.encode({
+            'user_id': user['user_id'],
+            'email': user['email'],
+            'role': user['role'],
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+        }, SECRET_KEY, algorithm="HS256")
+    
+        return jsonify({
+            "token": token,
+            "user": {
+                "user_id": user['user_id'],
+                "first_name": user['first_name'],
+                "last_name": user['last_name'],
+                "email": user['email'],
+                "role": user['role'],
+                "balance": user['balance']
+            }
+        }), 200
 
 
 @api.route('/register', methods=['POST'])
@@ -168,37 +173,12 @@ def register():
             fetch='none'
         )
 
-        return jsonify({"message": "Регистрация прошла успешно"}), 201
+        register_send_code(email)
+        return jsonify({"message": "Код отправлен на ваш email"}), 200
 
     except Exception as e:
         logging.error(f"Ошибка регистрации: {e}")
         return jsonify({"error": "Ошибка регистрации"}), 500
-
-
-@api.route('/register/send-code', methods=['POST'])
-def register_send_code():
-    data = request.get_json()
-    email = data.get('email')
-
-    if not email:
-        return jsonify({"error": "Email обязателен"}), 400
-
-    code = generate_code()
-    SQL_request("""
-        INSERT INTO verification_codes (email, code, type)
-        VALUES (?, ?, 'register')
-    """, params=(email, code), fetch='none')
-
-    # Отправляем письмо
-    send_email(
-        to_email=email,
-        subject="Код подтверждения",
-        text_body=f"Ваш код: {code}",
-        html_body=f"<p>Ваш код: <strong>{code}</strong></p>"
-    )
-
-    return jsonify({"message": "Код отправлен на ваш email"}), 200
-
 
 @api.route('/register/verify-code', methods=['POST'])
 def verify_code():
@@ -226,6 +206,11 @@ def verify_code():
         UPDATE verification_codes SET is_used = TRUE
         WHERE id = ?
     """, params=(record['id'],), fetch='none')
+
+    SQL_request("""
+        UPDATE users SET email_confirmed = TRUE
+        WHERE email = ?
+    """, params=(email,), fetch='none')
 
     return jsonify({"message": "Email подтверждён"}), 200
 

@@ -71,7 +71,6 @@ def create_users():
 def create_verification_codes():
     SQL_request('''CREATE TABLE IF NOT EXISTS verification_codes (
         id INTEGER PRIMARY KEY,
-        user_id INTEGER,  -- опционально, если привязываем к пользователю
         email VARCHAR(255) NOT NULL,
         code VARCHAR(10),
         token TEXT,  -- для восстановления пароля
