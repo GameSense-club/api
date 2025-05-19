@@ -1,41 +1,48 @@
 import json
 import sqlite3
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
-DB_NAME = 'database.db'
-DB_PATH = f"{DB_NAME}"
+DB_PATH = os.getenv("DB_PATH")
 
-def SQL_request(request, params=(), all_data=None, return_json=None): # выполнение SQL запросов
-    connect = sqlite3.connect(DB_PATH)
-    cursor = connect.cursor()
-    result = None
-    
-    if request.strip().lower().startswith('select'):
-        cursor.execute(request, params)
-        if all_data is None:
-            raw_result = cursor.fetchone()
-        else:
-            raw_result = cursor.fetchall()
+def SQL_request(query, params=(), fetch='one', jsonify_result=False):
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query, params)
 
-        if raw_result is not None and cursor.description:
-            columns = [col[0] for col in cursor.description]
-            data = {}
-            for col, value in zip(columns, raw_result):
-                try:
-                    data[col] = json.loads(raw_result)
-                except: pass
-            result = data
-        else:
-            result = raw_result
-        
-        connect.close()
-        if return_json:
-            return json.dumps(result)
-        return result
-    else:
-        cursor.execute(request, params)
-        connect.commit()
-        connect.close()
-        return None
+            if fetch == 'all':
+                rows = cursor.fetchall()
+                columns = [desc[0] for desc in cursor.description]
+                result = [
+                    {
+                        col: json.loads(row[i]) if isinstance(row[i], str) and row[i].startswith('{') else row[i]
+                        for i, col in enumerate(columns)
+                    }
+                    for row in rows
+                ]
+            elif fetch == 'one':
+                row = cursor.fetchone()
+                if row:
+                    columns = [desc[0] for desc in cursor.description]
+                    result = {
+                        col: json.loads(row[i]) if isinstance(row[i], str) and row[i].startswith('{') else row[i]
+                        for i, col in enumerate(columns)
+                    }
+                else:
+                    result = None
+            else:
+                conn.commit()
+                result = None
+
+        except sqlite3.Error as e:
+            print(f"Ошибка SQL: {e}")
+            raise
+
+    if jsonify_result and result is not None:
+        return json.dumps(result, ensure_ascii=False, indent=2)
+    return result
 
 def create_users():
     SQL_request('''CREATE TABLE IF NOT EXISTS users (
@@ -45,10 +52,10 @@ def create_users():
         last_name VARCHAR(50) NOT NULL,
         email VARCHAR(255) NOT NULL UNIQUE,
         phone_number VARCHAR(20),
-        password VARCHAR(255) NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
         date_of_birth DATE,
         gender VARCHAR(10) DEFAULT 'male',
-        joined DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         last_login DATETIME,
         balance INTEGER DEFAULT 0,
         passport INTEGER DEFAULT 0,
@@ -56,7 +63,8 @@ def create_users():
         inventory JSON,
         tg TEXT,
         vk TEXT,
-        role TEXT DEFAULT 'user'
+        role TEXT DEFAULT 'user',
+        is_active BOOLEAN DEFAULT TRUE
     )''')
 
 def create_verification_codes():

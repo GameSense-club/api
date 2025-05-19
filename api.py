@@ -1,20 +1,28 @@
 from flask import Flask, jsonify, Blueprint, request, abort
-import config
 from scripts import *
 from flask_cors import CORS
-from flask_jwt_extended import (
-    JWTManager, create_access_token, 
-    jwt_required, get_jwt_identity
-)
-from werkzeug.security import generate_password_hash, check_password_hash
-import random
+import jwt
 import datetime
+from werkzeug.security import check_password_hash, generate_password_hash
+from functools import wraps
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 if __name__ != '__main__':
     CORS(app)
 
 VERSION = "test"
-ALLOWED_API_KEYS = config.API_KEYS
+
+ALLOWED_API_KEYS = os.getenv("ALLOWED_API_KEYS", "").split(",")
+ALLOWED_API_KEYS = [key.strip() for key in ALLOWED_API_KEYS if key.strip()]
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+JWT_ACCESS_EXPIRES_HOURS = int(os.getenv("JWT_ACCESS_EXPIRES_HOURS", "24"))
+DEBUG = os.getenv("DEBUG", "False").lower() in ["true", "1"]
+required_env_vars = ["SECRET_KEY", "DB_PATH"]
+
 api = Blueprint(
     "api",
     __name__,
@@ -23,9 +31,41 @@ api = Blueprint(
     url_prefix='/api'
 )
 
+
 def check_api_key(api_key):
     if api_key not in ALLOWED_API_KEYS:
         abort(401, description="Неверный API ключ")
+
+def require_api_key(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        api_key = request.headers.get('X-API-Key')
+        if not api_key:
+            abort(401, description="API ключ отсутствует в заголовках")
+
+        if api_key not in ALLOWED_API_KEYS:
+            abort(403, description="Доступ запрещён: неверный API ключ")
+
+        return func(*args, **kwargs)
+    return wrapper
+
+def jwt_required(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({"error": "Токен отсутствует"}), 401
+
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            current_user_id = payload['user_id']
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Токен истёк"}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "Неверный токен"}), 401
+
+        return func(current_user_id, *args, **kwargs)
+    return wrapper
 
 
 # РОУТЫ
@@ -33,125 +73,130 @@ def check_api_key(api_key):
 def example():
     return jsonify({"message": "API Работает"}), 200
 
-def generate_code(length=6):
-    return ''.join(random.choice('0123456789') for _ in range(length))
+@api.route('/login', methods=['POST'])
+@require_api_key
+def login():
+    data = request.get_json()
+    identifier = data.get('identifier')  # Может быть email или телефон
+    password = data.get('password')
 
-def send_email(email, code):
-    # Заглушка для отправки email
-    print(f"Код для {email}: {code}")
+    if not identifier or not password:
+        return jsonify({"error": "Email/телефон и пароль обязательны"}), 400
 
-@api.route('/auth/register', methods=['POST'])
+    # Поиск по email
+    user = SQL_request("SELECT * FROM users WHERE email = ?", params=(identifier,), fetch='one')
+    if not user and '@' not in identifier:  # Если это не email, попробуем телефон
+        user = SQL_request("SELECT * FROM users WHERE phone_number = ?", params=(identifier,), fetch='one')
+
+    if not user:
+        return jsonify({"error": "Пользователь не найден"}), 404
+
+    # Проверяем пароль
+    if not check_password_hash(user['password_hash'], password):
+        return jsonify({"error": "Неверный пароль"}), 401
+
+    # Обновляем last_login
+    SQL_request(
+        "UPDATE users SET last_login = datetime('now') WHERE user_id = ?",
+        params=(user['user_id'],),
+        fetch='none'
+    )
+
+    # Генерируем JWT
+    token = jwt.encode({
+        'user_id': user['user_id'],
+        'email': user['email'],
+        'role': user['role'],
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+    }, SECRET_KEY, algorithm="HS256")
+
+    return jsonify({
+        "token": token,
+        "user": {
+            "user_id": user['user_id'],
+            "first_name": user['first_name'],
+            "last_name": user['last_name'],
+            "email": user['email'],
+            "role": user['role'],
+            "balance": user['balance']
+        }
+    }), 200
+
+
+@api.route('/register', methods=['POST'])
+@require_api_key
 def register():
     data = request.get_json()
-    email = data.get('email')
     
-    if not email or '@' not in email:
-        abort(400, description="Некорректный email")
-    
-    if SQL_request('SELECT email FROM users WHERE email = ?', (email,)):
-        abort(409, description="Email уже зарегистрирован")
-    
-    code = generate_code()
-    SQL_request('''INSERT INTO verification_codes (email, code, type) 
-                   VALUES (?, ?, ?)''', 
-                (email, code, 'registration'))
-    send_email(email, code)
-    
-    return jsonify(message="Код подтверждения отправлен"), 200
+    required_fields = ['first_name', 'last_name', 'email', 'password']
+    for field in required_fields:
+        if not data.get(field):
+            return jsonify({"error": f"Поле '{field}' обязательно"}), 400
 
-@api.route('/auth/verify', methods=['POST'])
-def verify_email():
-    data = request.get_json()
-    email = data.get('email')
-    code = data.get('code')
-    user_data = data.get('user_data')
-    
-    verification = SQL_request('''SELECT * FROM verification_codes 
-                               WHERE email = ? AND code = ? AND type = ? 
-                               ORDER BY created_at DESC LIMIT 1''',
-                               (email, code, 'registration'), all_data=True)
-    
-    if not verification:
-        abort(400, description="Неверный код или email")
-    
+    email = data['email'].strip().lower()
+    password = data['password']
+
+    # Проверяем, существует ли пользователь
+    existing_user = SQL_request(
+        "SELECT user_id FROM users WHERE email = ?",
+        params=(email,),
+        fetch='one'
+    )
+    if existing_user:
+        return jsonify({"error": "Пользователь с таким email уже существует"}), 400
+
+    # Хэшируем пароль
+    hashed_password = generate_password_hash(password)
+
+    # Подготавливаем данные
     try:
-        hashed_pw = generate_password_hash(user_data['password'])
-        SQL_request('''INSERT INTO users (
-            email, password, first_name, last_name, 
-            phone_number, date_of_birth, joined
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)''', (
-            email,
-            hashed_pw,
-            user_data.get('first_name', ''),
-            user_data.get('last_name', ''),
-            user_data.get('phone_number', ''),
-            user_data.get('date_of_birth', ''),
-            datetime.datetime.now()
-        ))
-        SQL_request('DELETE FROM verification_codes WHERE email = ? AND type = ?', 
-                    (email, 'registration'))
+        SQL_request(
+            """INSERT INTO users (
+                first_name, middle_name, last_name, email, phone_number,
+                password_hash, date_of_birth, gender, created_at, cart, inventory
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), '{}', '{}')""",
+            params=(
+                data.get('first_name'),
+                data.get('middle_name'),
+                data.get('last_name'),
+                email,
+                data.get('phone_number'),
+                hashed_password,
+                data.get('date_of_birth'),
+                data.get('gender', 'male')
+            ),
+            fetch='none'
+        )
+
+        return jsonify({"message": "Регистрация прошла успешно"}), 201
+
     except Exception as e:
-        abort(500, description=str(e))
-    
-    return jsonify(message="Регистрация успешна"), 201
+        logging.error(f"Ошибка регистрации: {e}")
+        return jsonify({"error": "Ошибка регистрации"}), 500
 
-@api.route('/auth/login', methods=['POST'])
-def login():
-    email = request.json.get('email')
-    password = request.json.get('password')
-    
-    user = SQL_request('SELECT * FROM users WHERE email = ?', (email,))
-    if not user or not check_password_hash(user['password'], password):
-        abort(401, description="Неверные учетные данные")
-    
-    access_token = create_access_token(identity=email)
-    return jsonify(access_token=access_token), 200
 
-@api.route('/auth/forgot_password', methods=['POST'])
-def forgot_password():
-    email = request.json.get('email')
-    if not email:
-        abort(400, description="Укажите email")
-    
-    user = SQL_request('SELECT email FROM users WHERE email = ?', (email,))
+@api.route('/profile', methods=['GET'])
+@jwt_required
+@require_api_key
+def profile(user_id):
+    user = SQL_request("SELECT * FROM users WHERE user_id = ?", params=(user_id,), fetch='one')
     if not user:
-        abort(404, description="Пользователь не найден")
-    
-    code = generate_code()
-    SQL_request('''INSERT INTO verification_codes (email, code, type) 
-                 VALUES (?, ?, ?)''', 
-              (email, code, 'password_reset'))
-    send_email(email, code)
-    
-    return jsonify(message="Код для сброса пароля отправлен"), 200
+        return jsonify({"error": "Пользователь не найден"}), 404
 
-@api.route('/auth/reset_password', methods=['POST'])
-def reset_password():
-    data = request.get_json()
-    email = data.get('email')
-    code = data.get('code')
-    new_password = data.get('new_password')
-    
-    verification = SQL_request('''SELECT * FROM verification_codes 
-                               WHERE email = ? AND code = ? AND type = ? 
-                               ORDER BY created_at DESC LIMIT 1''',
-                               (email, code, 'password_reset'), all_data=True)
-    
-    if not verification:
-        abort(400, description="Неверный код или email")
-    
-    hashed_pw = generate_password_hash(new_password)
-    SQL_request('UPDATE users SET password = ? WHERE email = ?', 
-               (hashed_pw, email))
-    SQL_request('DELETE FROM verification_codes WHERE email = ? AND type = ?', 
-               (email, 'password_reset'))
-    
-    return jsonify(message="Пароль успешно изменен"), 200
+    return jsonify({
+        "user_id": user['user_id'],
+        "email": user['email'],
+        "first_name": user['first_name'],
+        "balance": user['balance']
+    }), 200
 
 
 if __name__ == '__main__':
-    app = Flask(__name__)
-    app.register_blueprint(api)
-    app.config['JWT_SECRET_KEY'] = config.JWT_SECRET
-    jwt = JWTManager(app)
-    app.run(port=5000, debug=True)
+    for var in required_env_vars:
+        if not os.getenv(var):
+            raise EnvironmentError(f"Переменная окружения {var} не задана в .env")
+        else:
+            logging.info("Сервер запущен")
+            app = Flask(__name__)
+            app.register_blueprint(api)
+            app.run(port=5000, debug=True)
