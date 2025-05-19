@@ -51,6 +51,7 @@ def create_users():
         middle_name VARCHAR(50),
         last_name VARCHAR(50) NOT NULL,
         email VARCHAR(255) NOT NULL UNIQUE,
+        email_confirmed BOOLEAN DEFAULT FALSE,
         phone_number VARCHAR(20),
         password_hash VARCHAR(255) NOT NULL,
         date_of_birth DATE,
@@ -70,10 +71,13 @@ def create_users():
 def create_verification_codes():
     SQL_request('''CREATE TABLE IF NOT EXISTS verification_codes (
         id INTEGER PRIMARY KEY,
+        user_id INTEGER,  -- опционально, если привязываем к пользователю
         email VARCHAR(255) NOT NULL,
-        code VARCHAR(10) NOT NULL,
+        code VARCHAR(10),
+        token TEXT,  -- для восстановления пароля
+        type VARCHAR(20) NOT NULL,  -- 'register', 'reset_password'
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        type VARCHAR(20) NOT NULL
+        is_used BOOLEAN DEFAULT FALSE
     )''')
     SQL_request('CREATE INDEX IF NOT EXISTS idx_email_type ON verification_codes (email, type)')
 

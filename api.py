@@ -8,6 +8,7 @@ from functools import wraps
 from dotenv import load_dotenv
 import os
 from middleware import setup_middleware, role_required
+from mail import send_email
 
 load_dotenv()
 
@@ -172,6 +173,88 @@ def register():
     except Exception as e:
         logging.error(f"Ошибка регистрации: {e}")
         return jsonify({"error": "Ошибка регистрации"}), 500
+
+
+@api.route('/register/send-code', methods=['POST'])
+def register_send_code():
+    data = request.get_json()
+    email = data.get('email')
+
+    if not email:
+        return jsonify({"error": "Email обязателен"}), 400
+
+    code = generate_code()
+    SQL_request("""
+        INSERT INTO verification_codes (email, code, type)
+        VALUES (?, ?, 'register')
+    """, params=(email, code), fetch='none')
+
+    # Отправляем письмо
+    send_email(
+        to_email=email,
+        subject="Код подтверждения",
+        text_body=f"Ваш код: {code}",
+        html_body=f"<p>Ваш код: <strong>{code}</strong></p>"
+    )
+
+    return jsonify({"message": "Код отправлен на ваш email"}), 200
+
+
+@api.route('/register/verify-code', methods=['POST'])
+def verify_code():
+    data = request.get_json()
+    email = data.get('email')
+    code = data.get('code')
+
+    if not email or not code:
+        return jsonify({"error": "Email и код обязательны"}), 400
+
+    record = SQL_request("""
+        SELECT * FROM verification_codes
+        WHERE email = ? AND code = ? AND type = 'register'
+        ORDER BY created_at DESC LIMIT 1
+    """, params=(email, code), fetch='one')
+
+    if not record:
+        return jsonify({"error": "Неверный код или истёк срок действия"}), 400
+
+    if record['is_used']:
+        return jsonify({"error": "Этот код уже использован"}), 400
+
+    # Обновляем запись как использованную
+    SQL_request("""
+        UPDATE verification_codes SET is_used = TRUE
+        WHERE id = ?
+    """, params=(record['id'],), fetch='none')
+
+    return jsonify({"message": "Email подтверждён"}), 200
+
+
+@api.route('/password/reset/request', methods=['POST'])
+@require_api_key
+def reset_password_request():
+    data = request.get_json()
+    email = data.get('email')
+
+    user = SQL_request("SELECT * FROM users WHERE email = ?", params=(email,), fetch='one')
+    if not user:
+        return jsonify({"error": "Пользователь не найден"}), 404
+
+    token = generate_token()
+    SQL_request("""
+        INSERT INTO verification_codes (email, token, type)
+        VALUES (?, ?, 'reset_password')
+    """, params=(email, token), fetch='none')
+
+    reset_link = f"https://yoursite.com/reset-password?token= {token}"
+    send_email(
+        to_email=email,
+        subject="Восстановление пароля",
+        text_body=f"Перейдите по ссылке: {reset_link}",
+        html_body=f"<p>Перейдите по ссылке: <a href='{reset_link}'>Сбросить пароль</a></p>"
+    )
+
+    return jsonify({"message": "Ссылка для восстановления отправлена на email"}), 200
 
 
 @api.route('/profile', methods=['GET'])
