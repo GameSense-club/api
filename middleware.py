@@ -5,7 +5,8 @@ import logging
 from logging.handlers import RotatingFileHandler
 import json
 import os
-from flask import request, jsonify, abort
+from flask import request, jsonify, abort, g
+from database import SQL_request
 
 # === Настройка логгера для аудита ===
 audit_logger = logging.getLogger('audit')
@@ -21,11 +22,13 @@ if not audit_logger.handlers:
     audit_logger.addHandler(audit_handler)
 
 
-# === Middleware для проверки прав доступа ===
-def role_required(required_role='user'):
+def auth_decorator(role='user', check_self=True):
     """
-    Декоратор, который проверяет, есть ли у пользователя нужная роль.
-    Примеры: @role_required('admin'), @role_required('moderator')
+    Универсальный декоратор для аутентификации и авторизации.
+    
+    Параметры:
+        role (str): Требуемая роль ('admin', 'developer' и т.д.)
+        check_self (bool): Проверяет, что пользователь работает только со своими данными
     """
     def decorator(func):
         @wraps(func)
@@ -37,20 +40,40 @@ def role_required(required_role='user'):
             try:
                 token = auth_header.split(" ")[1]
                 payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-                user_role = payload.get('role', 'user')
 
-                # Проверяем, достаточно ли прав
-                allowed_roles = {
-                    'admin': ['admin'],
-                    'moderator': ['admin', 'moderator'],
-                    'user': ['admin', 'moderator', 'user']
-                }
+                # Проверка роли
+                if role:
+                    user_role = payload.get('role', 'user')
+                    allowed_roles = {
+                        'developer': ['developer'],
+                        'admin': ['admin', 'developer'],
+                        'user': ['admin', 'developer', 'user']
+                    }
 
-                if user_role not in allowed_roles.get(required_role, []):
-                    abort(403, description=f"Нет прав: требуется роль {required_role}")
+                    if user_role not in allowed_roles.get(role, []):
+                        abort(403, description=f"Нет прав: требуется роль {role}")
 
-                # Логируем действие пользователя
-                audit_logger.info(f"{payload['email']} ({user_role}) вызвал маршрут {request.path} | IP: {request.remote_addr}")
+                    # Логирование
+                    audit_logger.info(
+                        f"{payload['email']} ({user_role}) вызвал маршрут {request.path} | IP: {request.remote_addr}"
+                    )
+
+                # Получение данных пользователя
+                if check_self or role:
+                    user_id = payload.get('user_id')
+                    if not user_id:
+                        abort(401, description="Неверный токен: отсутствует идентификатор пользователя")
+
+                    user = SQL_request("SELECT * FROM users WHERE user_id = ?", params=(user_id,), fetch='one')
+                    if not user:
+                        abort(404, description="Пользователь не найден")
+
+                    g.user = user
+
+                    # Проверка, что пользователь может редактировать только себя
+                    if check_self and 'user_id' in kwargs and str(kwargs['user_id']) != str(user_id):
+                        abort(403, description="Вы можете управлять только своими данными")
+
             except jwt.ExpiredSignatureError:
                 abort(401, description="Токен истёк")
             except jwt.InvalidTokenError:
@@ -65,7 +88,7 @@ def role_required(required_role='user'):
 def setup_middleware(app):
     @app.before_request
     def api_key_and_logging_middleware():
-        excluded_routes = ['/api/login', '/api/register']
+        excluded_routes = ['/api/login', '/api/register', '/', '/register/verify-code']
 
         if request.path in excluded_routes or request.method == 'OPTIONS':
             return None
