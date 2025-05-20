@@ -1,6 +1,6 @@
 from functools import wraps
 import jwt
-import datetime
+from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
 import json
@@ -88,11 +88,27 @@ def auth_decorator(role='user', check_self=True):
 def setup_middleware(app):
     @app.before_request
     def api_key_and_logging_middleware():
-        excluded_routes = ['/api/login', '/api/register', '/', '/register/verify-code']
+        excluded_routes = ['/']
 
         if request.path in excluded_routes or request.method == 'OPTIONS':
             return None
 
+        # Проверка на наличие JWT токена
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header.split(" ")[1]
+            try:
+                # Здесь должен быть секрет из конфига
+                decoded = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+                # Если токен валиден, мы его принимаем как авторизацию
+                request.user = decoded  # Можно сохранить данные пользователя
+                return None
+            except jwt.ExpiredSignatureError:
+                return jsonify({"error": "Срок действия токена истёк"}), 401
+            except jwt.InvalidTokenError:
+                return jsonify({"error": "Неверный токен"}), 401
+
+        # Если JWT нет — проверяем API ключ
         api_key = request.headers.get('X-API-Key')
         if not api_key:
             return jsonify({"error": "API ключ отсутствует"}), 401
@@ -101,13 +117,12 @@ def setup_middleware(app):
             return jsonify({"error": "Неверный API ключ"}), 403
 
         # Сохраняем время начала запроса
-        request._start_time = datetime.datetime.now()
+        request._start_time = datetime.now()
         return None
 
     @app.after_request
     def log_request_info(response):
         if hasattr(request, '_start_time'):
-            elapsed = (datetime.datetime.now() - request._start_time).total_seconds() * 1000  # в мс
+            elapsed = (datetime.now() - request._start_time).total_seconds() * 1000  # в мс
             logging.info(f"{request.remote_addr} {request.method} {request.path} → {response.status} за {int(elapsed)}ms")
-
         return response
