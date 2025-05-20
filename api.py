@@ -27,6 +27,7 @@ def create_app():
 
     # Настройка конфигов 
     app.config["ALLOWED_API_KEYS"] = ALLOWED_API_KEYS
+    app.config["SECRET_KEY"] = SECRET_KEY
     setup_middleware(app)
 
     return app
