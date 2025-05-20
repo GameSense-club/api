@@ -14,6 +14,10 @@ def profile():
         'id': g.user['user_id'],
         'email': g.user["email"],
     }), 200
+
+@api.route('/profile/<int:user_id>', methods=['GET'])
+@auth_decorator('admin')
+def user_profile(user_id):
     user = SQL_request("SELECT * FROM users WHERE user_id = ?", params=(user_id,), fetch='one')
     if not user:
         return jsonify({"error": "Пользователь не найден"}), 404
@@ -24,4 +28,3 @@ def profile():
         "first_name": user['first_name'],
         "balance": user['balance']
     }), 200
-
