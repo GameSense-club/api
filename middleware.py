@@ -88,7 +88,7 @@ def auth_decorator(role='user', check_self=True):
 def setup_middleware(app):
     @app.before_request
     def api_key_and_logging_middleware():
-        excluded_routes = ['/']
+        excluded_routes = ['/', '/register', 'login']
 
         if request.path in excluded_routes or request.method == 'OPTIONS':
             return None
