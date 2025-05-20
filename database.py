@@ -23,6 +23,7 @@ def SQL_request(query, params=(), fetch='one', jsonify_result=False):
                     }
                     for row in rows
                 ]
+
             elif fetch == 'one':
                 row = cursor.fetchone()
                 if row:
@@ -81,7 +82,22 @@ def create_verification_codes():
     )''')
     SQL_request('CREATE INDEX IF NOT EXISTS idx_email_type ON verification_codes (email, type)')
 
+def create_time_packages():
+    SQL_request('''CREATE TABLE IF NOT EXISTS time_packages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(50) NOT NULL,
+    description TEXT,
+    duration_minutes INTEGER NOT NULL CHECK(duration_minutes > 0),
+    price DECIMAL(10,2) NOT NULL CHECK(price >= 0),
+    time_period VARCHAR(10) CHECK(time_period IN ('утро', 'день', 'ночь')),
+    is_weekday BOOLEAN DEFAULT FALSE,
+    is_weekend BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
+    image BLOB
+);''')
+
 
 
 create_users()
 create_verification_codes()
+create_time_packages()

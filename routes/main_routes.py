@@ -1,4 +1,5 @@
 from .registration import *
+from .time_packages import *
 from database import SQL_request
 
 
