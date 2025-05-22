@@ -138,3 +138,12 @@ def verify_code():
     """, params=(email,), fetch='none')
 
     return jsonify({"message": "Email подтверждён"}), 200
+
+
+@api.route('/profile', methods=['GET'])
+@auth_decorator()
+def profile():
+    return jsonify({
+        'id': g.user['user_id'],
+        'email': g.user["email"],
+    }), 200
