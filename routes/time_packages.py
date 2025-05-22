@@ -7,6 +7,12 @@ def time_packages():
     packages = [ {k: v for k, v in p.items() if k != 'image'} for p in packages ]
     return jsonify(packages), 200
 
+@api.route('/time_packages/<int:package_id>', methods=['GET'])
+def time_package(package_id):
+    package = SQL_request("SELECT * FROM time_packages WHERE id = ?", (package_id,), fetch='one')
+    del package['image']
+    return jsonify(package), 200
+
 @api.route('/time_packages/add', methods=['POST'])
 @auth_decorator('admin')
 def add_time_package():
