@@ -1,4 +1,4 @@
-from .registration import *
+from .main_routes import *
 import base64
 
 @api.route('/time_packages', methods=['GET'])

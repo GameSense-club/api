@@ -1,6 +1,20 @@
-from .registration import *
-from .time_packages import *
 from database import SQL_request
+from flask import Blueprint, jsonify, request, abort, g
+from functools import wraps
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from werkzeug.security import check_password_hash, generate_password_hash
+import jwt
+import datetime
+import logging
+from mail import send_email
+from middleware import setup_middleware, auth_decorator
+from database import SQL_request
+import config
+from utils import *
+
+SECRET_KEY = config.SECRET_KEY
+
+api = Blueprint('api', __name__)
 
 
 @api.route('/', methods=['GET'])
