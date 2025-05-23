@@ -32,9 +32,9 @@ def create_app():
 
     return app
 
+app = create_app()
+
 if __name__ == '__main__':
-    app = create_app()
     logging.info("Сервер запущен")
     app.run(port=5000, debug=config.DEBUG)
-else:
-    app = create_app()
+    
