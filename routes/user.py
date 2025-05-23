@@ -28,14 +28,14 @@ def login():
     else:
         # Обновляем last_login
         SQL_request(
-            "UPDATE users SET last_login = datetime('now') WHERE user_id = ?",
-            params=(user['user_id'],),
+            "UPDATE users SET last_login = datetime('now') WHERE id = ?",
+            params=(user['id'],),
             fetch='none'
         )
     
         # Генерируем JWT
         token = jwt.encode({
-            'user_id': user['user_id'],
+            'user_id': user['id'],
             'email': user['email'],
             'role': user['role'],
             'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
@@ -44,7 +44,7 @@ def login():
         return jsonify({
             "token": token,
             "user": {
-                "user_id": user['user_id'],
+                "user_id": user['id'],
                 "first_name": user['first_name'],
                 "last_name": user['last_name'],
                 "email": user['email'],
@@ -68,7 +68,7 @@ def register():
 
     # Проверяем, существует ли пользователь
     existing_user = SQL_request(
-        "SELECT user_id FROM users WHERE email = ?",
+        "SELECT id FROM users WHERE email = ?",
         params=(email,),
         fetch='one'
     )
@@ -144,14 +144,14 @@ def verify_code():
 @auth_decorator()
 def profile():
     return jsonify({
-        'id': g.user['user_id'],
+        'id': g.user['id'],
         'email': g.user["email"],
     }), 200
 
 @api.route('/profile/<int:user_id>', methods=['GET'])
 @auth_decorator('admin')
 def user_profile(user_id):
-    user = SQL_request("SELECT * FROM users WHERE user_id = ?", params=(user_id,), fetch='one')
+    user = SQL_request("SELECT * FROM users WHERE id = ?", params=(user_id,), fetch='one')
     if not user:
         return jsonify({"error": "Пользователь не найден"}), 404
 

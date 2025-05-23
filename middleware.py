@@ -64,7 +64,7 @@ def auth_decorator(role='user', check_self=True):
                     if not user_id:
                         abort(401, description="Неверный токен: отсутствует идентификатор пользователя")
 
-                    user = SQL_request("SELECT * FROM users WHERE user_id = ?", params=(user_id,), fetch='one')
+                    user = SQL_request("SELECT * FROM users WHERE id = ?", params=(user_id,), fetch='one')
                     if not user:
                         abort(404, description="Пользователь не найден")
 
@@ -88,7 +88,7 @@ def auth_decorator(role='user', check_self=True):
 def setup_middleware(app):
     @app.before_request
     def api_key_and_logging_middleware():
-        excluded_routes = ['/', '/register', '/login']
+        excluded_routes = ['/', '/register', '/login', '/register/verify-code']
 
         if request.path in excluded_routes or request.method == 'OPTIONS':
             return None

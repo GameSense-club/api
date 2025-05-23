@@ -48,7 +48,7 @@ def SQL_request(query, params=(), fetch='one', jsonify_result=False):
 
 def create_users():
     SQL_request('''CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
+        id INTEGER PRIMARY KEY,
         first_name VARCHAR(50) NOT NULL,
         middle_name VARCHAR(50),
         last_name VARCHAR(50) NOT NULL,
