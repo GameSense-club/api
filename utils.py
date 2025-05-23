@@ -37,18 +37,23 @@ def register_send_code(email):
         html_body=f"<p>Ваш код: <strong>{code}</strong></p>"
     )
 
-def buy_products(user, product=None, cart=None):
-    if float(user['balance']) < float(product['price']):
+def buy_products(user, product_id, type_product, quality):
+    product = SQL_request(f"SELECT * FROM {type_product} WHERE id = ?", params=(product_id,), fetch='one')
+    if int(product['is_active']) == 0:
+        return {"error":"Товар не доступен к покупке"}, 403
+
+    price = float(product['price']) * int(quality)
+    if float(user['balance']) < price:
         return {"error":"Недостаточный баланс"}, 402
 
-    balance = float(user['balance']) - float(product['price'])
+    balance = float(user['balance']) - price
     inventory = SQL_request("SELECT inventory FROM users WHERE id = ?", params=(user['id'],), fetch='all')[0]
     inventory = (inventory['inventory'])
     product_id = str(product['id'])
     if product_id in inventory:
-        inventory[product_id] += 1
+        inventory[product_id] += int(quality)
     else:
-        inventory[product_id] = 1
+        inventory[product_id] = quality
     inventory = json.dumps(inventory)
     SQL_request("UPDATE users SET inventory = ?, balance = ? WHERE id = ? ", params=(inventory, balance, user['id']), fetch='none')
 
