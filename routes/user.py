@@ -146,4 +146,5 @@ def profile():
     return jsonify({
         'id': g.user['id'],
         'email': g.user["email"],
+        'created_at': g.user["created_at"],
     }), 200

@@ -110,3 +110,9 @@ def add_time_package():
         }), 500
 
 
+@api.route('/pc/register', methods=['POST'])
+def pc_register():
+    data = request.get_json()
+    token = data.get('token')
+    SQL_request("INSERT INTO computers (token) VALUES (?)", (token,), fetch=None)
+    return jsonify({"message":"Компьютер зарегестрирован"}), 201

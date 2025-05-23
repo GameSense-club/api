@@ -112,6 +112,7 @@ def create_purchases():
 def create_computers():
     SQL_request('''CREATE TABLE IF NOT EXISTS computers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    number_pc INTEGER,
     token TEXT,
     time_active CURRENT_TIMESTAMP,
     user_active INTEGER REFERENCES users(id),
