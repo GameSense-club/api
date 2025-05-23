@@ -148,3 +148,26 @@ def profile():
         'email': g.user["email"],
         'created_at': g.user["created_at"],
     }), 200
+
+@api.route('/activate_product', methods=['POST'])
+@auth_decorator()
+def activate_product():
+    user = g.user
+    data = request.get_json()
+    id_product = str(data.get("id"))
+    type_product = data.get("type")
+    quality = data.get("quality")
+
+    inventory = SQL_request("SELECT inventory FROM users WHERE id = ?", params=(user['id'],), fetch='one')["inventory"]
+
+    if id_product in inventory[type_product]:
+        if int(inventory[type_product][id_product]) >= int(quality):
+            inventory[type_product][id_product] -= int(quality)
+            inventory = json.dumps(inventory)
+            SQL_request("UPDATE users SET inventory = ? WHERE id = ? ", params=(inventory, user['id']), fetch='none')
+        else:
+            return jsonify({"error":"Недостаточное количество"}), 403
+    else:
+        return jsonify({"error":"У вас нет этого товара"}), 403
+
+    return jsonify({"message":"Успешная активация"}), 200
