@@ -5,6 +5,7 @@ import random
 import string
 import secrets
 from mail import send_email
+import json
 
 formatter = logging.Formatter('%(levelname)s [%(asctime)s]   %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
@@ -35,3 +36,20 @@ def register_send_code(email):
         text_body=f"Ваш код: {code}",
         html_body=f"<p>Ваш код: <strong>{code}</strong></p>"
     )
+
+def buy_products(user, product=None, cart=None):
+    if float(user['balance']) < float(product['price']):
+        return {"error":"Недостаточный баланс"}, 402
+
+    balance = float(user['balance']) - float(product['price'])
+    inventory = SQL_request("SELECT inventory FROM users WHERE id = ?", params=(user['id'],), fetch='all')[0]
+    inventory = (inventory['inventory'])
+    product_id = str(product['id'])
+    if product_id in inventory:
+        inventory[product_id] += 1
+    else:
+        inventory[product_id] = 1
+    inventory = json.dumps(inventory)
+    SQL_request("UPDATE users SET inventory = ?, balance = ? WHERE id = ? ", params=(inventory, balance, user['id']), fetch='none')
+
+    return {"message":"Оплата прошла успешно"}, 200

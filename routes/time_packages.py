@@ -91,3 +91,14 @@ def add_time_package():
         return jsonify({
             "error": str(e)
         }), 500
+
+@api.route('/buy/<string:type_product>/<int:id_product>', methods=['GET'])
+@auth_decorator()
+def buy_product(type_product, id_product):
+    protducts = ["time_packages"]
+    if type_product not in protducts:
+        return jsonify({"error": "Даннный продукт не найден"}), 400
+    else:
+        product = SQL_request(f"SELECT * FROM {type_product} WHERE id = ?", (id_product,), fetch='one')
+        message, code = buy_products(g.user, product)
+        return jsonify(message), code
