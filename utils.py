@@ -56,5 +56,18 @@ def buy_products(user, product_id, type_product, quality):
         inventory[product_id] = quality
     inventory = json.dumps(inventory)
     SQL_request("UPDATE users SET inventory = ?, balance = ? WHERE id = ? ", params=(inventory, balance, user['id']), fetch='none')
+    SQL_request(
+            """INSERT INTO purchases (
+                user_id, product, product_id, quality, price, time_buy
+            ) VALUES (?, ?, ?, ?, ?, datetime('now'))""",
+            params=(
+                user['id'],
+                type_product,
+                product_id,
+                quality,
+                price
+            ),
+            fetch='none'
+        )
 
     return {"message":"Оплата прошла успешно"}, 200

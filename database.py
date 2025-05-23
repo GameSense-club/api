@@ -100,12 +100,13 @@ def create_time_packages():
 def create_purchases():
     SQL_request('''CREATE TABLE IF NOT EXISTS purchases (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
+    user_id INTEGER REFERENCES users(id),
     product TEXT,
+    product_id INTEGER,
     quality INTEGER,
     price DECIMAL(10,2) NOT NULL CHECK(price >= 0),
     time_buy DATETIME DEFAULT CURRENT_TIMESTAMP,
-    status INTEGER
+    status INTEGER DEFAULT 1
 );''')
 
 
