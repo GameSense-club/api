@@ -1,4 +1,5 @@
 from .main_routes import *
+from datetime import datetime, timedelta
 
 @api.route('/profile/<int:user_id>', methods=['GET', "POST"])
 @auth_decorator('admin')
@@ -116,3 +117,29 @@ def pc_register():
     token = data.get('token')
     SQL_request("INSERT INTO computers (token) VALUES (?)", (token,), fetch=None)
     return jsonify({"message":"Компьютер зарегестрирован"}), 201
+
+@api.route('/pc/status', methods=['POST'])
+@auth_decorator()
+def edit_status():
+    unlock_status = ["Занят", "Активен"]
+    data = request.get_json()
+    token = data.get('token')
+    status = data.get('status')
+    if g.user['role'] != 'user' or status not in unlock_status:
+        SQL_request("UPDATE computers SET status = ?, time_active = null WHERE token = ? ", params=(status, token), fetch='none')
+        if status == "Занят":
+            time = data.get('time')
+            now_time = SQL_request("SELECT time_active FROM computers WHERE token = ?", params=(token,), fetch='one')['time_active']
+            if now_time is None: 
+                now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            dt = datetime.strptime(now_time, "%Y-%m-%d %H:%M:%S")
+            hours, minutes = map(int, time.split(':'))
+            delta = timedelta(hours=hours, minutes=minutes)
+            new_dt = dt + delta
+            now_time = new_dt.strftime("%Y-%m-%d %H:%M:%S")
+            SQL_request("UPDATE computers SET time_active = ? WHERE token = ? ", params=(now_time, token), fetch='none')
+        else:
+            SQL_request("UPDATE computers SET status = ?, time_active = null WHERE token = ? ", params=(status, token), fetch='none')
+        return jsonify({"message":"Статус компьютера изменён"}), 200
+    else:
+        return jsonify({"message":"Доступ запрещён"}), 403
