@@ -8,7 +8,6 @@ import datetime
 import logging
 from mail import send_email
 from middleware import setup_middleware, auth_decorator
-from database import SQL_request
 import config
 from utils import *
 
