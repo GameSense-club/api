@@ -8,8 +8,10 @@ from mail import send_email
 import json
 
 formatter = logging.Formatter('%(levelname)s [%(asctime)s]   %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-
-file_handler = RotatingFileHandler('api.log', maxBytes=5*1024*1024, backupCount=3, encoding='utf-8')
+try:
+    file_handler = RotatingFileHandler('/var/lib/gamesense-api/api.log', maxBytes=5*1024*1024, backupCount=3, encoding='utf-8')
+except:
+    file_handler = RotatingFileHandler('api.log', maxBytes=5*1024*1024, backupCount=3, encoding='utf-8')
 file_handler.setFormatter(formatter)
 
 logger = logging.getLogger()
