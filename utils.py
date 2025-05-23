@@ -50,10 +50,13 @@ def buy_products(user, product_id, type_product, quality):
     inventory = SQL_request("SELECT inventory FROM users WHERE id = ?", params=(user['id'],), fetch='all')[0]
     inventory = (inventory['inventory'])
     product_id = str(product['id'])
-    if product_id in inventory:
-        inventory[product_id] += int(quality)
+    if inventory.get(type_product) is None:
+        inventory[type_product] = {}
+
+    if product_id in inventory[type_product]:
+        inventory[type_product][product_id] += int(quality)
     else:
-        inventory[product_id] = quality
+        inventory[type_product][product_id] = quality
     inventory = json.dumps(inventory)
     SQL_request("UPDATE users SET inventory = ?, balance = ? WHERE id = ? ", params=(inventory, balance, user['id']), fetch='none')
     SQL_request(
