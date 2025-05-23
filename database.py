@@ -97,7 +97,20 @@ def create_time_packages():
 );''')
 
 
+def create_purchases():
+    SQL_request('''CREATE TABLE IF NOT EXISTS purchases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    product TEXT,
+    quality INTEGER,
+    price DECIMAL(10,2) NOT NULL CHECK(price >= 0),
+    time_buy DATETIME DEFAULT CURRENT_TIMESTAMP,
+    status INTEGER
+);''')
+
+
 
 create_users()
 create_verification_codes()
 create_time_packages()
+create_purchases()
