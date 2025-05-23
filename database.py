@@ -109,9 +109,19 @@ def create_purchases():
     status INTEGER DEFAULT 1
 );''')
 
+def create_computers():
+    SQL_request('''CREATE TABLE IF NOT EXISTS computers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT,
+    time_active CURRENT_TIMESTAMP,
+    user_active INTEGER REFERENCES users(id),
+    status VARCHAR(20) CHECK(status IN ('Активен', 'Занят', 'Заблокирован', "На ремонте"))
+);''')
+
 
 
 create_users()
 create_verification_codes()
 create_time_packages()
 create_purchases()
+create_computers()
